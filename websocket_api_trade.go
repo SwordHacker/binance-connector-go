@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+
+	uuid "github.com/satori/go.uuid"
 )
 
 type OrderPlacementService struct {
@@ -153,12 +155,12 @@ func (s *OrderPlacementService) Do(ctx context.Context) (*OrderPlacementResponse
 		parameters["recvWindow"] = strconv.FormatInt(*s.recvWindow, 10)
 	}
 
-	signedParams, err := websocketAPISignature(s.websocketAPI.APIKey, s.websocketAPI.APISecret, parameters)
+	signedParams, err := websocketED25519Signature(s.websocketAPI.APIKey, s.websocketAPI.APISecret, parameters)
 	if err != nil {
 		panic(err)
 	}
 
-	id := getUUID()
+	id := uuid.NewV4().String()
 
 	payload := map[string]interface{}{
 		"id":     id,

@@ -2,10 +2,14 @@ package binance_connector
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log"
 	"math/rand"
@@ -168,6 +172,57 @@ func wsApiServe(c *websocket.Conn, handler WsHandler, errHandler ErrHandler) (st
 		}
 	}()
 	return stopCh, nil
+}
+
+func websocketED25519Signature(apiKey string, apiSecret string, parameters map[string]string) (map[string]string, error) {
+	if apiKey == "" || apiSecret == "" {
+		return nil, &WebsocketClientError{
+			Message: "api_key and api_secret are required for websocket API signature",
+		}
+	}
+
+	parameters["timestamp"] = strconv.FormatInt(time.Now().Unix()*1000, 10)
+	parameters["apiKey"] = apiKey
+
+	// Sort parameters by key
+	keys := make([]string, 0, len(parameters))
+	for key := range parameters {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	// Build sorted query string
+	var sortedParams []string
+	for _, key := range keys {
+		sortedParams = append(sortedParams, key+"="+parameters[key])
+	}
+
+	// Calculate signature
+	queryString := strings.Join(sortedParams, "&")
+	signature := hmacED25519Hashing(apiSecret, queryString)
+
+	parameters["signature"] = string(signature)
+
+	return parameters, nil
+}
+
+func hmacED25519Hashing(apiSecret string, data string) string {
+	block, _ := pem.Decode([]byte(apiSecret))
+	priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	// if pri, ok := priv.(ed25519.PrivateKey); ok {
+	// 	fmt.Println(pri)
+	// }
+	if err != nil {
+		fmt.Println("Failed to parse private key:", err)
+		return ""
+	}
+	privateKey := priv.(ed25519.PrivateKey)
+
+	// 使用 privateKey 进行签名
+	message := []byte(data)
+	signature := ed25519.Sign(privateKey, message)
+	sign := base64.StdEncoding.EncodeToString(signature)
+	return sign
 }
 
 func websocketAPISignature(apiKey string, apiSecret string, parameters map[string]string) (map[string]string, error) {
